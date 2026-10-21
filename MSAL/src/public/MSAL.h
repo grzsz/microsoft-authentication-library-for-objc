@@ -47,6 +47,7 @@ FOUNDATION_EXPORT const unsigned char MSAL__Framework_VersionString[];
 #import <MSAL/MSALLoggerConfig.h>
 #import <MSAL/MSALTelemetryConfig.h>
 #import <MSAL/MSALHTTPConfig.h>
+#import <MSAL/MSALHttpClientFactory.h>
 #import <MSAL/MSALCacheConfig.h>
 #import <MSAL/MSALPublicClientApplication.h>
 #import <MSAL/MSALSliceConfig.h>

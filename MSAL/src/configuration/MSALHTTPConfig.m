@@ -26,10 +26,13 @@
 //------------------------------------------------------------------------------
 
 #import "MSALHTTPConfig+Internal.h"
+#import "MSALHttpClientFactory.h"
 #import "MSIDURLSessionManager.h"
 #import "MSIDHttpRequest.h"
 
 @implementation MSALHTTPConfig
+
+@synthesize httpClientFactory = _httpClientFactory;
 
 + (instancetype)sharedInstance
 {
@@ -38,8 +41,34 @@
     dispatch_once(&onceToken, ^{
         sharedInstance = [[self.class alloc] init];
     });
-    
+
     return sharedInstance;
+}
+
+- (void)setHttpClientFactory:(id<MSALHttpClientFactory>)httpClientFactory
+{
+    @synchronized (self)
+    {
+        _httpClientFactory = httpClientFactory;
+
+        if (!httpClientFactory)
+        {
+            MSIDURLSessionManager.sessionProvider = nil;
+            return;
+        }
+
+        MSIDURLSessionManager.sessionProvider = ^NSURLSession *{
+            return [httpClientFactory urlSession];
+        };
+    }
+}
+
+- (id<MSALHttpClientFactory>)httpClientFactory
+{
+    @synchronized (self)
+    {
+        return _httpClientFactory;
+    }
 }
 
 

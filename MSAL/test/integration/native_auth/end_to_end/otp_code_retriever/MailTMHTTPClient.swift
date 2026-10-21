@@ -38,9 +38,7 @@ struct MailTMHTTPClient {
     let baseURLString: String
 
     /// Sends a request to `baseURLString + path` and returns the HTTP status plus the parsed
-    /// JSON body (if any). Retries HTTP 429 up to three times, waiting 1, 2, then 4 seconds.
-    /// Each request starts a fresh retry schedule.
-    /// Returns the final response on exhaustion, or nil for invalid requests, transport failure or cancellation.
+    /// JSON body (if any). Returns nil only when the URL is malformed or the transport fails.
     /// When `authorizationToken` is non-nil the Authorization header is set to that bearer token.
     func sendJSON(
         path: String,
@@ -68,22 +66,10 @@ struct MailTMHTTPClient {
             }
         }
         do {
-            var retryDelays = MailTMConstants.throttlingRetryDelaysNanoseconds.makeIterator()
-            while true {
-                try Task.checkCancellation()
-                let (data, response) = try await URLSession.shared.data(for: request)
-                let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
-                if statusCode == MailTMConstants.Status.tooManyRequests, let delay = retryDelays.next() {
-                    print("mail.tm returned HTTP 429; retrying in \(delay / 1_000_000_000) seconds.")
-                    try await Task.sleep(nanoseconds: delay)
-                    continue
-                }
-                if statusCode == MailTMConstants.Status.tooManyRequests {
-                    print("mail.tm HTTP 429 retry limit reached.")
-                }
-                let json = try? JSONSerialization.jsonObject(with: data, options: [])
-                return (statusCode, json)
-            }
+            let (data, response) = try await URLSession.shared.data(for: request)
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+            let json = try? JSONSerialization.jsonObject(with: data, options: [])
+            return (statusCode, json)
         } catch {
             print(error)
             return nil

@@ -91,6 +91,60 @@ MSALInteractiveTokenParameters *interactiveParams = [[MSALInteractiveTokenParame
 }];
 ```
 
+## Using a custom NSURLSession (HTTP proxy support)
+
+By default MSAL creates its own `NSURLSession`, which follows the system proxy settings. To route MSAL's token, discovery and metadata requests through a specific proxy, or to reuse your app's session, implement `MSALHttpClientFactory` and set it on `MSALGlobalConfig.httpConfig`. This mirrors `IMsalHttpClientFactory` in MSAL.NET.
+
+```obj-c
+@interface ProxySessionFactory : NSObject <MSALHttpClientFactory, NSURLSessionTaskDelegate>
+@end
+
+@implementation ProxySessionFactory
+{
+    NSURLSession *_session;
+}
+
+- (instancetype)init
+{
+    self = [super init];
+    NSURLSessionConfiguration *config = [NSURLSessionConfiguration defaultSessionConfiguration];
+    config.connectionProxyDictionary = @{ @"HTTPSEnable": @1, @"HTTPSProxy": @"proxy.corp.example", @"HTTPSPort": @8080,
+                                          @"HTTPEnable": @1,  @"HTTPProxy": @"proxy.corp.example",  @"HTTPPort": @8080 };
+    _session = [NSURLSession sessionWithConfiguration:config delegate:self delegateQueue:nil];
+    return self;
+}
+
+- (NSURLSession *)urlSession
+{
+    return _session;
+}
+
+// Answers the proxy's 407 challenge with credentials.
+- (void)URLSession:(NSURLSession *)session
+              task:(NSURLSessionTask *)task
+didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
+ completionHandler:(void (^)(NSURLSessionAuthChallengeDisposition, NSURLCredential *))completionHandler
+{
+    if (challenge.protectionSpace.isProxy && challenge.previousFailureCount == 0)
+    {
+        NSURLCredential *credential = [NSURLCredential credentialWithUser:@"user"
+                                                                 password:@"secret"
+                                                              persistence:NSURLCredentialPersistenceForSession];
+        completionHandler(NSURLSessionAuthChallengeUseCredential, credential);
+        return;
+    }
+
+    completionHandler(NSURLSessionAuthChallengePerformDefaultHandling, nil);
+}
+
+@end
+
+// Set once, before acquiring tokens. Applies to all MSALPublicClientApplication instances.
+MSALGlobalConfig.httpConfig.httpClientFactory = [ProxySessionFactory new];
+```
+
+The factory is called for every request, so return a long-lived session and keep the implementation thread-safe. MSAL never invalidates the session. The factory does not affect interactive browser traffic (`ASWebAuthenticationSession`, `SFSafariViewController`, `WKWebView`) or broker flows, which run out of process. For the embedded `WKWebView`, pass your own view via `MSALWebviewParameters.customWebview` with `WKWebsiteDataStore.proxyConfigurations` set.
+
 ## Master branch deprecation
 
 The master branch has been copied over to main branch. The master branch will contain updates only until version 1.2.14, for further releases please refer to 'main' branch instead of 'master'.

@@ -27,6 +27,8 @@
 
 #import <Foundation/Foundation.h>
 
+@protocol MSALHttpClientFactory;
+
 NS_ASSUME_NONNULL_BEGIN
 
 /**
@@ -36,6 +38,15 @@ NS_ASSUME_NONNULL_BEGIN
 @interface MSALHTTPConfig : NSObject
 
 #pragma mark - Configuration options
+
+/**
+    Optional factory providing the `NSURLSession` MSAL uses for its network requests.
+    Set this to route MSAL traffic through an HTTP proxy or to reuse your app's session.
+    nil (default) lets MSAL manage its own session. See `MSALHttpClientFactory` for a proxy example.
+    @note Applies to all instances of `MSALPublicClientApplication`. Does not affect browser or broker traffic.
+    @note `timeoutIntervalForRequest`, `retryCount` and `retryInterval` still apply to requests sent through the provided session.
+ */
+@property (nonatomic, strong, nullable) id<MSALHttpClientFactory> httpClientFactory;
 
 /**
  Number of retry attemps to be made in case of a network error,

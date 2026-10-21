@@ -176,6 +176,87 @@ MSALSilentTokenParameters *silentParams =
 }];
 ```
 
+## Custom NSURLSession and HTTP Proxy
+
+MSAL's token, discovery and metadata requests use a library-owned `NSURLSession` by default. To route them through a proxy or reuse the app's session, implement the `MSALHttpClientFactory` protocol (one method, `urlSession`) and set it globally on `MSALGlobalConfig.httpConfig.httpClientFactory`. This mirrors `IMsalHttpClientFactory` / `WithHttpClientFactory` in MSAL.NET.
+
+### Objective-C
+
+```objc
+@interface ProxySessionFactory : NSObject <MSALHttpClientFactory, NSURLSessionTaskDelegate>
+@end
+
+@implementation ProxySessionFactory
+{
+    NSURLSession *_session;
+}
+
+- (instancetype)init
+{
+    self = [super init];
+    NSURLSessionConfiguration *config = [NSURLSessionConfiguration defaultSessionConfiguration];
+    config.connectionProxyDictionary = @{ @"HTTPSEnable": @1, @"HTTPSProxy": @"proxy.corp.example", @"HTTPSPort": @8080,
+                                          @"HTTPEnable": @1,  @"HTTPProxy": @"proxy.corp.example",  @"HTTPPort": @8080 };
+    _session = [NSURLSession sessionWithConfiguration:config delegate:self delegateQueue:nil];
+    return self;
+}
+
+- (NSURLSession *)urlSession
+{
+    return _session;
+}
+
+- (void)URLSession:(NSURLSession *)session
+              task:(NSURLSessionTask *)task
+didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
+ completionHandler:(void (^)(NSURLSessionAuthChallengeDisposition, NSURLCredential *))completionHandler
+{
+    if (challenge.protectionSpace.isProxy && challenge.previousFailureCount == 0)
+    {
+        NSURLCredential *credential = [NSURLCredential credentialWithUser:@"user"
+                                                                 password:@"secret"
+                                                              persistence:NSURLCredentialPersistenceForSession];
+        completionHandler(NSURLSessionAuthChallengeUseCredential, credential);
+        return;
+    }
+
+    completionHandler(NSURLSessionAuthChallengePerformDefaultHandling, nil);
+}
+
+@end
+
+MSALGlobalConfig.httpConfig.httpClientFactory = [ProxySessionFactory new];
+```
+
+### Swift
+
+```swift
+final class ProxySessionFactory: NSObject, MSALHttpClientFactory, URLSessionTaskDelegate {
+    private lazy var session: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.connectionProxyDictionary = ["HTTPSEnable": 1, "HTTPSProxy": "proxy.corp.example", "HTTPSPort": 8080,
+                                            "HTTPEnable": 1, "HTTPProxy": "proxy.corp.example", "HTTPPort": 8080]
+        return URLSession(configuration: config, delegate: self, delegateQueue: nil)
+    }()
+
+    func urlSession() -> URLSession { session }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask,
+                    didReceive challenge: URLAuthenticationChallenge,
+                    completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        guard challenge.protectionSpace.isProxy, challenge.previousFailureCount == 0 else {
+            completionHandler(.performDefaultHandling, nil)
+            return
+        }
+        completionHandler(.useCredential, URLCredential(user: "user", password: "secret", persistence: .forSession))
+    }
+}
+
+MSALGlobalConfig.httpConfig.httpClientFactory = ProxySessionFactory()
+```
+
+Rules: the factory is called for every request, so it must be thread-safe and return a long-lived session; MSAL never invalidates it. It does not apply to interactive browser traffic or broker flows. For `MSALWebviewTypeWKWebView`, supply `MSALWebviewParameters.customWebview` with `WKWebsiteDataStore.proxyConfigurations` set.
+
 ## Best Practices
 
 1. **Always try silent acquisition first**: Before prompting the user, attempt to acquire a token silently using `acquireTokenSilentWithParameters:completionBlock:`.
